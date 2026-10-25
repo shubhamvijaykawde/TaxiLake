@@ -1,0 +1,6 @@
+pytest
+pyarrow
+pyspark>=4,<5
+ruff
+pyyaml
+actionlint-py

@@ -1,0 +1,140 @@
+# TaxiLake bundle.
+# No host, token or user name here. Local use: pass the CLI profile (`-p taxilake-dev`). CI uses OAuth M2M environment
+# variables (see docs/CICD.md). Targets:
+#   dev  - default; development mode; also holds the phase 0-3 helper jobs used while building the pipeline.
+#   prod - deployed only by CI after a merge to main; contains ONLY taxilake_pipeline, with its schedule PAUSED.
+bundle:
+  name: taxilake
+
+variables:
+  run_as_service_principal:
+    description: Application (client) ID of the CI service principal that deploys and owns the prod bundle. Supplied by CI.
+
+resources:
+  jobs:
+    # The full pipeline for one month. Landing (download/upload) stays on the laptop, so a scheduled run only works if
+    # that month's files are already in the volume; the schedule is therefore defined but must stay PAUSED.
+    taxilake_pipeline:
+      name: taxilake_pipeline
+      max_concurrent_runs: 1
+      parameters:
+        - name: catalog
+          default: workspace
+        - name: month
+          default: "2025-01"
+        - name: batch_id
+          default: ""
+        - name: inject_failure
+          default: ""
+      schedule:
+        quartz_cron_expression: "0 0 6 5 * ?"
+        timezone_id: America/New_York
+        pause_status: PAUSED
+      tasks:
+        - task_key: bronze_load
+          notebook_task:
+            notebook_path: ./notebooks/bronze_load.py
+          max_retries: 2
+          min_retry_interval_millis: 30000
+          timeout_seconds: 1800
+        - task_key: silver_transform
+          depends_on:
+            - task_key: bronze_load
+          notebook_task:
+            notebook_path: ./notebooks/silver_transform.py
+          max_retries: 2
+          min_retry_interval_millis: 30000
+          timeout_seconds: 1800
+        - task_key: gold_build
+          depends_on:
+            - task_key: silver_transform
+          notebook_task:
+            notebook_path: ./notebooks/gold_build.py
+          max_retries: 2
+          min_retry_interval_millis: 30000
+          timeout_seconds: 1800
+        - task_key: checks
+          depends_on:
+            - task_key: gold_build
+          notebook_task:
+            notebook_path: ./notebooks/checks.py
+          max_retries: 2
+          min_retry_interval_millis: 30000
+          timeout_seconds: 1800
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      run_as_service_principal: not-used-in-dev  # prod must receive the real value from CI; it has no default
+    resources:
+      jobs:
+        phase0_smoke_job:
+          name: phase0_smoke_job
+          parameters:
+            - name: catalog
+              default: workspace
+          tasks:
+            # No cluster spec: the task runs on serverless compute, the only option on Free Edition.
+            - task_key: smoke_test
+              notebook_task:
+                notebook_path: ./notebooks/phase0_smoke_test.py
+
+        phase1_bronze_job:
+          name: phase1_bronze_job
+          parameters:
+            - name: catalog
+              default: workspace
+            - name: month
+              default: "2025-01"
+            - name: batch_id
+              default: ""
+          tasks:
+            - task_key: bronze_load
+              notebook_task:
+                notebook_path: ./notebooks/bronze_load.py
+
+        phase2_silver_job:
+          name: phase2_silver_job
+          parameters:
+            - name: catalog
+              default: workspace
+            - name: month
+              default: "2025-01"
+            - name: batch_id
+              default: ""
+          tasks:
+            - task_key: silver_transform
+              notebook_task:
+                notebook_path: ./notebooks/silver_transform.py
+
+        phase3_gold_job:
+          name: phase3_gold_job
+          parameters:
+            - name: catalog
+              default: workspace
+            - name: month
+              default: "2025-01"
+            - name: batch_id
+              default: ""
+          tasks:
+            - task_key: gold_build
+              notebook_task:
+                notebook_path: ./notebooks/gold_build.py
+
+  prod:
+    mode: production
+    # Private location: the deploying service principal's own home folder (not /Workspace/Shared).
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: ${var.run_as_service_principal}
+    permissions:
+      - service_principal_name: ${var.run_as_service_principal}
+        level: CAN_MANAGE
+    resources:
+      jobs:
+        taxilake_pipeline:
+          schedule:
+            pause_status: PAUSED

@@ -1,0 +1,12 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "data", ".databricks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# Databricks notebooks: imports sit after the sys.path setup, `dbutils`/`spark` are provided by the runtime, and the
+# markdown header cells contain long lines.
+"notebooks/*.py" = ["E402", "E501", "F821"]
