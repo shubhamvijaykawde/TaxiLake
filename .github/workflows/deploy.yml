@@ -1,0 +1,101 @@
+# Production deployment. Runs only for a push to main, and only when ALL of these hold:
+#   1. the repository variable DEPLOY_ENABLED is 'true' (kill switch, unset until the first PR is ready to merge);
+#   2. the checks workflow (tests, lint, production bundle validation) passes on this exact commit;
+#   3. the commit belongs to a merged pull request into main (a direct push is refused);
+#   4. the 'production' environment is approved (required reviewer) and the commit is still the tip of main.
+# It deploys bundle files only. It never starts a job, never runs SQL and never touches data tables.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    uses: ./.github/workflows/checks.yml
+    secrets:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+
+  pr-gate:
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Require a merged pull request for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          merged=$(gh api "repos/${REPO}/commits/${SHA}/pulls" --jq '[.[] | select(.merged_at != null and .base.ref == "main")] | length')
+          if [ "${merged}" -lt 1 ]; then
+            echo "::error::Commit is not part of a merged pull request into main; refusing to deploy."
+            exit 1
+          fi
+
+  deploy:
+    needs: [checks, pr-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      DATABRICKS_AUTH_TYPE: oauth-m2m
+      BUNDLE_VAR_run_as_service_principal: ${{ secrets.DATABRICKS_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Confirm the checked-out commit is the tested commit
+        run: |
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+      - name: Skip if a newer commit has reached main
+        id: fresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          tip=$(gh api "repos/${REPO}/branches/main" --jq .commit.sha)
+          if [ "${tip}" != "${GITHUB_SHA}" ]; then
+            echo "::notice::A newer commit is on main; this older commit is not deployed."
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: databricks/setup-cli@8de769ec2543ee05e456ee2121350efc7efc4bda # v1.22.1
+        if: steps.fresh.outputs.stale != 'true'
+      - name: Authentication smoke check
+        if: steps.fresh.outputs.stale != 'true'
+        run: databricks current-user me > /dev/null
+      - name: Validate production bundle
+        if: steps.fresh.outputs.stale != 'true'
+        run: databricks bundle validate -t prod > /dev/null
+      - name: Deploy production bundle
+        if: steps.fresh.outputs.stale != 'true'
+        run: databricks bundle deploy -t prod > /dev/null
+      - name: Verify the deployment is safe
+        if: steps.fresh.outputs.stale != 'true'
+        run: |
+          set -euo pipefail
+          databricks bundle summary -t prod -o json > summary.json
+          job_id=$(python3 -c "import json; print(json.load(open('summary.json', encoding='utf-8-sig'))['resources']['jobs']['taxilake_pipeline']['id'])")
+          databricks jobs get "${job_id}" -o json > job.json
+          databricks jobs list-runs --job-id "${job_id}" -o json > runs.json
+          python3 scripts/verify_deployment.py --summary summary.json --job job.json --runs runs.json
