@@ -108,6 +108,7 @@ The February failure-injection canary (step 8) was deliberately not re-run.
 | CI gate (`verify_deployment.py` requires `environment == prod`) in a real deploy | **Open**, untested against a real deployment |
 | `bundle validate -t prod` with the real CI service-principal identity | **Open**: the earlier validation used a literal placeholder and is not evidence for the real identity |
 | Access-control isolation | **Not provided**: naming only |
+| Clean-checkout reproduction of the April dev workflow | **Verified (reported by the author, 2026-10-30; batch `bf20261030T144309_202504`, job run `907493238503128`)**: an independent newcomer (the author's friend) deployed the `dev` bundle from a clean Git checkout (branch `readme-clean-test`, commit `79bf377`) and ran 2025-04 with reconciliation PASS; the target remained `workspace.dev_*` (bronze 3,970,553, accepted 3,706,768, quarantined 263,785 in `dev_ops`). It was a repeat run on existing dev April data in the reused workspace, tested at that commit only. Claude did not re-snapshot the production-named tables for this run, so it adds no new production-unchanged evidence beyond the 2026-10-28 snapshots. Not extended to other months, a new workspace, `prod` or access control |
 | Months other than 2025-04 in dev | Not loaded (one month while developing) |
 
 ## Rollback

@@ -103,7 +103,7 @@ All values below are from **historical runs** on 2026-10-25 recorded in [`docs/R
 
 This is the **development flow**: everything below reads and writes the `dev_`-prefixed schemas (`workspace.dev_bronze` and so on) and the volume `workspace.dev_landing.raw`. The scripts cannot write to the production-named tables, and nothing in this README loads them.
 
-**Status of these steps.** *(author-run)* = the author executed the step in this project. *(observed 2026-10-28)* = executed and checked by the assistant through the CLI, with the results in [`docs/RUNLOG.md`](docs/RUNLOG.md). *(manual check)* = described from the code, not yet run by anyone from this text; do it and compare with the expected result. **A clean clone followed end to end by another person has not been tested, and a Power BI rebuild from a blank report using the model script has not been tested** (applying the script to a copy of an existing report with `Environment = dev` was validated by the author, user-reported, 2026-10-30).
+**Status of these steps.** *(author-run)* = the author executed the step in this project. *(observed 2026-10-28)* = executed and checked by the assistant through the CLI, with the results in [`docs/RUNLOG.md`](docs/RUNLOG.md). *(manual check)* = described from the code, not yet run by anyone from this text; do it and compare with the expected result. **Independent newcomer test: PASSED (reported by the author, 2026-10-30).** A friend of the author who was new to the project cloned branch `readme-clean-test` (commit `79bf377`) into a separate folder and followed the development steps 1, 2, 4, 5 and 6, then checked the results as in steps 7 and 8. **The tester reused the existing Databricks Free Edition workspace, dev schemas, volume and tables**; **provisioning a brand-new workspace from scratch has not been tested.** The April run was a repeat on already-loaded dev data, not a first load into empty tables. **The workflow was tested at commit `79bf377`; README and documentation edits made after that commit were not independently tested.** Not tested: the six-month dev backfill and a Power BI rebuild from a blank report using the model script (applying the script to a copy of an existing report with `Environment = dev` was validated by the author, user-reported, 2026-10-30).
 
 **Prerequisites**
 - A Databricks Free Edition workspace (serverless compute only; use the built-in Serverless Starter Warehouse for SQL).
@@ -154,7 +154,7 @@ databricks bundle validate -t dev -p taxilake-dev
 databricks bundle deploy -t dev -p taxilake-dev
 ```
 
-This deploys the job `taxilake_pipeline` (development mode, so Databricks prefixes its name) and syncs `notebooks/` and `src/` to your workspace folder `.bundle/taxilake/dev/files`. Never deploy `prod` from a laptop: that target belongs to CI.
+This deploys the job `taxilake_pipeline` (development mode, so Databricks prefixes its name) and syncs `notebooks/` and `src/` to your workspace folder `.bundle/taxilake/dev/files`. Never deploy `prod` from a laptop: that target belongs to CI. On a fresh clone `bundle validate` prints one warning because the sync exclude pattern `powerbi/*.pbix` matches no file (the report is intentionally not in Git); that is expected (user-reported, clean-checkout test 2026-10-30).
 
 ### 5. Check the range before using compute *(author-run)*
 
@@ -172,7 +172,7 @@ It downloads the upstream files into `data/landing/`, compares each Parquet sche
 
 For the month this downloads the TLC file and the zone CSV, fetches the Open-Meteo weather, uploads all three to `workspace.dev_landing.raw` (a file that is already there with the same size is skipped), runs the job with `environment=dev`, and checks the reconciliation row. (To do only the upload, run `scripts\download_sources.py --month 2025-04`, `scripts\fetch_weather.py --month 2025-04` and `scripts\upload_to_volume.py --month 2025-04`; the upload defaults to the dev volume.)
 
-Expected result on an empty dev copy, as observed on 2026-10-28 (batch `bf20261028T214506_202504`): bronze 3,970,553 rows, silver accepted 3,706,768, quarantined 263,785, duplicates removed 0, reconciliation `PASS`; the command prints `all requested months reconciled`. Command timing in that run: `job_ms` 173,990, `wall_s` 190.4. Running the same command again changes nothing (observed: `COPY INTO` and the gold `MERGE` wrote 0 rows).
+Expected result on an empty dev copy, as observed on 2026-10-28 (batch `bf20261028T214506_202504`): bronze 3,970,553 rows, silver accepted 3,706,768, quarantined 263,785, duplicates removed 0, reconciliation `PASS`; the command prints `all requested months reconciled`. Command timing in that run: `job_ms` 173,990, `wall_s` 190.4. Running the same command again changes nothing (observed: `COPY INTO` and the gold `MERGE` wrote 0 rows). A clean checkout pointed at a workspace whose dev April data already exists therefore behaves like that repeat run: on 2026-10-30 (batch `bf20261030T144309_202504`, job run `907493238503128`, user-reported) all four tasks succeeded and reconciliation was `PASS` with the same counts, `job_ms` 165,771 and `wall_s` 192.1.
 
 For all six months run `scripts\backfill.py --start 2025-01 --end 2025-06 --resume`; it stops at the first failed month and `--resume` skips months already reconciled as PASS. *(manual check: the six-month run has been done only against the production-named tables in Phase 4, before the isolation change; in dev only 2025-04 has been loaded.)*
 
@@ -221,13 +221,18 @@ The screenshots below were taken from the author's own report, which reads the p
 | Item | State |
 |---|---|
 | Local tests, `ruff`, `bundle validate -t dev` | Passed on 2026-10-29 (see `docs/RUNLOG.md`) |
+| **Independent newcomer test (the author's friend), clean Git checkout, branch `readme-clean-test`, commit `79bf377`** | **PASSED**; reported by the author, 2026-10-30. Tested at that commit; later README and documentation edits were not independently tested |
+| Clean checkout: fresh `.venv`, 273 tests passed, `ruff` clean, `bundle validate -t dev` OK (one expected warning that the `.pbix` is absent), CLI authentication | Reported by the author, 2026-10-30 |
+| Clean checkout: six-month source preflight (`--dry-run`, source row counts match the results table) | Reported by the author, 2026-10-30 |
+| Clean checkout: `bundle deploy -t dev` and the April run (batch `bf20261030T144309_202504`, PASS, repeat run on existing dev data); reconciliation and task-log queries; freshness (2025-04 FRESH, other months NEVER_RUN) | Reported by the author, 2026-10-30 (the local backfill log of the clean checkout matches the reported run) |
+| The tester reused the existing workspace, schemas, volume and tables | A **new Databricks workspace was not provisioned**; that is untested |
 | Steps 1, 2, 4, 5 | Author-run |
-| Steps 3, 6, 7 for 2025-04 in dev | Observed 2026-10-28 |
+| Steps 3, 6, 7 for 2025-04 in dev | Observed 2026-10-28 (first load into empty dev tables) |
 | Six-month dev backfill | Not run |
 | Step 8 in the workspace UI; the SQL editor "Run all" behaviour | Manual check |
 | Step 9: model script applied to a copy of an existing `.pbix` with `Environment = dev`, refreshed, April dev values as expected | User-reported manual validation (2026-10-30); not independently observed |
 | Step 9: rebuild from a blank report; six-month comparison with `expected_values.md` | Not tested (dev holds only 2025-04) |
-| Clean clone followed by another person | Not tested |
+| A new Databricks workspace provisioned from scratch; the README as edited after commit `79bf377` | Not tested |
 | Production deployment, CI deployment, access-control isolation | Not verified |
 
 ## Power BI report
