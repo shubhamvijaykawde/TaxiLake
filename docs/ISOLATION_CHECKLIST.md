@@ -1,8 +1,8 @@
 # Dev/prod data isolation (Phase 7 follow-up)
 
-## Status: dev-side isolation VERIFIED in Databricks for 2025-04 (2026-10-28); production deployment and access control NOT covered
+## Status: dev-side isolation VERIFIED in Databricks for 2025-04 (2026-10-28); new prod job definition deployed by CI (user-reported) and observed in Databricks (2026-10-30); access control NOT provided (naming only)
 
-Implemented locally (269 tests), then deployed to the **dev** target only and exercised for 2025-04 twice. The evidence below was observed directly through the CLI and SQL Statement API (not user-reported). What it shows: the dev runs wrote only to `workspace.dev_*` and the production-oriented `workspace.*` tables were unchanged before and after both runs. What it does **not** show: the new job definition is not deployed to `prod` (the deployed prod job is still the old definition, no `environment` parameter), the CI gate was not run, and naming is not access control. See "Observed results" and "Open".
+Implemented locally (269 tests), then deployed to the **dev** target only and exercised for 2025-04 twice. The evidence below was observed directly through the CLI and SQL Statement API (not user-reported). What it shows: the dev runs wrote only to `workspace.dev_*` and the production-oriented `workspace.*` tables were unchanged before and after both runs. What it does **not** show: access control (naming is not access control). *Update 2026-10-30:* the statements about the deployed prod job below ("still the old definition", "CI gate was not run") are historical; the new definition was later deployed through the CI workflow (user-reported) and observed in Databricks, see the done-check rows and `docs/RUNLOG.md`. See "Observed results" and "Open".
 
 ## Mapping
 
@@ -104,9 +104,9 @@ The February failure-injection canary (step 8) was deliberately not re-run.
 | Dev idempotency | **Verified (observed)** for 2025-04 |
 | Dev freshness | **Verified (observed)** |
 | Production schedule PAUSED, no prod run | **Verified (observed, read-only)**: PAUSED, 0 runs. Only for the currently deployed (old) prod job |
-| Production deployment of the new job definition | **Not done** (happens only through the normal merge to `main`; schedule stays PAUSED) |
-| CI gate (`verify_deployment.py` requires `environment == prod`) in a real deploy | **Open**, untested against a real deployment |
-| `bundle validate -t prod` with the real CI service-principal identity | **Open**: the earlier validation used a literal placeholder and is not evidence for the real identity |
+| Production deployment of the new job definition | **Done through CI on 2026-10-30 (workflow success on `main` commit `83cbb43`: user-reported; resulting state observed read-only by Claude)**: same job id `801604815952818` updated in place, parameter `environment = prod` and run-id `base_parameters` present, `PAUSED`, 0 runs, creator = Run as = the workspace's service principal, 6 jobs in the workspace, production-named tables/records/landing files identical to the pre-PR baseline. Schedule stays PAUSED |
+| CI gate (`verify_deployment.py` requires `environment == prod`) in a real deploy | **Passed in a real deployment (user-reported workflow success; the step output is not stored here).** Independently, the deployed state I observed satisfies each condition the gate checks (one job, schedule PAUSED, `environment` default `prod`, no scheduled run) |
+| `bundle validate -t prod` with the real CI service-principal identity | **Passed (user-reported):** `checks / bundle-validate` on PR head `db6f498` and the deploy workflow's validate step, both authenticated as the service principal. The earlier placeholder validation remains non-evidence |
 | Access-control isolation | **Not provided**: naming only |
 | Clean-checkout reproduction of the April dev workflow | **Verified (reported by the author, 2026-10-30; batch `bf20261030T144309_202504`, job run `907493238503128`)**: an independent newcomer (the author's friend) deployed the `dev` bundle from a clean Git checkout (branch `readme-clean-test`, commit `79bf377`) and ran 2025-04 with reconciliation PASS; the target remained `workspace.dev_*` (bronze 3,970,553, accepted 3,706,768, quarantined 263,785 in `dev_ops`). It was a repeat run on existing dev April data in the reused workspace, tested at that commit only. Claude did not re-snapshot the production-named tables for this run, so it adds no new production-unchanged evidence beyond the 2026-10-28 snapshots. Not extended to other months, a new workspace, `prod` or access control |
 | Months other than 2025-04 in dev | Not loaded (one month while developing) |
@@ -118,6 +118,7 @@ Code: you revert the change in Git. Dev data: `DROP SCHEMA workspace.dev_<layer>
 ## Limits
 
 - Naming isolation only; no grants were created or checked.
-- The new prod job definition (`environment = prod`) reaches production only after a merge; until then the deployed prod job is the old definition.
+- The new prod job definition (`environment = prod`) reaches production only after a merge. *Update 2026-10-30:* it was deployed that way (user-reported) and observed in Databricks. Isolation remains by naming only: the service principal that owns the job has no verified Unity Catalog grants, so a manual production run would probably fail on permissions rather than write; this is untested and no production run was made.
+- The deployment approval (the `production` environment reviewer) is not independent: the reviewer is the merging author and self-review is allowed. This does not affect data isolation, but it is a limit on the control that guards the production job definition.
 - `sql/31_migrate_fact_row_hash.sql` is not rendered for dev (it migrates an old production table).
 - Months 2025-01, 03, 05 and 06 are deliberately not loaded into dev (one month while developing).
