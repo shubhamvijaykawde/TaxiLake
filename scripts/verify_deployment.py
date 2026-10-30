@@ -3,6 +3,7 @@
 Reads JSON files saved from the Databricks CLI (so nothing host- or user-specific is ever printed) and fails unless:
   * the bundle contains exactly one job, `taxilake_pipeline`;
   * its schedule is PAUSED both in the bundle summary and in the deployed job;
+  * the deployed job's `environment` parameter defaults to "prod" (it must never point at the dev_ schemas);
   * no run was started by the schedule (and, with --require-no-runs, no run exists at all).
 Only PASS/FAIL lines are printed. CI never starts a job, so a run can only come from someone else.
 
@@ -45,6 +46,9 @@ def check(summary: dict, job: dict, runs, require_no_runs: bool = False) -> list
     deployed_status = (((job.get("settings") or {}).get("schedule")) or {}).get("pause_status")
     if deployed_status != "PAUSED":
         problems.append(f"deployed job schedule pause_status is {deployed_status!r}, expected 'PAUSED'")
+    parameters = {p.get("name"): p.get("default") for p in ((job.get("settings") or {}).get("parameters")) or []}
+    if parameters.get("environment") != "prod":
+        problems.append(f"deployed job parameter 'environment' is {parameters.get('environment')!r}, expected 'prod'")
     run_list = _run_list(runs)
     if require_no_runs and run_list:
         problems.append(f"job has {len(run_list)} run(s); expected none")

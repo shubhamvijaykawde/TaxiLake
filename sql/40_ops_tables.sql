@@ -1,5 +1,6 @@
 -- Phase 4: operational tables. Idempotent; safe to re-run.
--- month_reconciliation is a minimal precursor of Phase 7's ops.pipeline_runs: one row per checks run per month.
+-- month_reconciliation: one row per checks run per month (cross-layer counts and fingerprints). The per-task attempt log
+-- added in Phase 7 is ops.pipeline_runs (sql/41_ops_pipeline_runs.sql).
 
 CREATE TABLE IF NOT EXISTS workspace.ops.month_reconciliation (
   source_month          STRING,

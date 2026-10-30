@@ -1,0 +1,153 @@
+// TaxiLake Power BI validation queries.
+// Run in Power BI Desktop > DAX query view after the data has loaded. Each EVALUATE returns one result table.
+// Expected values (from read-only SQL against the gold/ops tables) are in powerbi/validation/expected_values.md.
+
+// 1. Row counts of every model table
+EVALUATE
+ROW(
+    "fact_trips_hourly", COUNTROWS(fact_trips_hourly),
+    "dim_zone", COUNTROWS(dim_zone),
+    "dim_date", COUNTROWS(dim_date),
+    "dim_time_of_day", COUNTROWS(dim_time_of_day),
+    "dim_payment_type", COUNTROWS(dim_payment_type),
+    "agg_hourly_demand", COUNTROWS(agg_hourly_demand),
+    "agg_daily_revenue_by_borough", COUNTROWS(agg_daily_revenue_by_borough),
+    "dq_reconciliation", COUNTROWS(dq_reconciliation),
+    "dq_quarantine_by_rule", COUNTROWS(dq_quarantine_by_rule),
+    "dim_month", COUNTROWS(dim_month)
+)
+
+// 2. Referential integrity: fact rows whose key finds no dimension row (all expected 0)
+EVALUATE
+ROW(
+    "orphan_date", COUNTROWS(FILTER(fact_trips_hourly, ISBLANK(RELATED(dim_date[date])))),
+    "orphan_hour", COUNTROWS(FILTER(fact_trips_hourly, ISBLANK(RELATED(dim_time_of_day[hour_label])))),
+    "orphan_zone", COUNTROWS(FILTER(fact_trips_hourly, ISBLANK(RELATED(dim_zone[borough])))),
+    "orphan_payment", COUNTROWS(FILTER(fact_trips_hourly, ISBLANK(RELATED(dim_payment_type[payment_type_name]))))
+)
+
+// 3. Overall core measures
+EVALUATE
+ROW(
+    "Trips", [Trips],
+    "Total Revenue", [Total Revenue],
+    "Fare Revenue", [Fare Revenue],
+    "Total Distance (miles)", [Total Distance (miles)],
+    "Tip Revenue", [Tip Revenue],
+    "Average Fare", [Average Fare],
+    "Revenue per Mile", [Revenue per Mile]
+)
+
+// 4. Per month: core measures and month-over-month
+EVALUATE
+SUMMARIZECOLUMNS(
+    dim_month[year_month],
+    "Trips", [Trips],
+    "Total Revenue", [Total Revenue],
+    "Fare Revenue", [Fare Revenue],
+    "Total Distance (miles)", [Total Distance (miles)],
+    "Average Fare", [Average Fare],
+    "Revenue per Mile", [Revenue per Mile],
+    "Revenue Prior Month", [Revenue Prior Month],
+    "Revenue MoM %", [Revenue MoM %]
+)
+ORDER BY dim_month[year_month]
+
+// 5. By payment type
+EVALUATE
+SUMMARIZECOLUMNS(
+    dim_payment_type[payment_type_name],
+    "Trips", [Trips],
+    "Total Revenue", [Total Revenue]
+)
+ORDER BY dim_payment_type[payment_type_name]
+
+// 6. By pickup borough
+EVALUATE
+SUMMARIZECOLUMNS(
+    dim_zone[borough],
+    "Trips", [Trips],
+    "Total Revenue", [Total Revenue]
+)
+ORDER BY [Trips] DESC
+
+// 7. Top 5 pickup zones by trips
+EVALUATE
+TOPN(
+    5,
+    SUMMARIZECOLUMNS(dim_zone[zone], dim_zone[borough], "Trips", [Trips]),
+    [Trips], DESC
+)
+
+// 8. Busiest 3 hours of day
+EVALUATE
+TOPN(
+    3,
+    SUMMARIZECOLUMNS(dim_time_of_day[hour_label], "Trips", [Trips]),
+    [Trips], DESC
+)
+
+// 9. Weather: hours and average trips per hour by precipitation band
+EVALUATE
+SUMMARIZECOLUMNS(
+    agg_hourly_demand[precip_band],
+    "Hours Observed", [Hours Observed],
+    "Avg Trips per Hour", [Avg Trips per Hour]
+)
+ORDER BY agg_hourly_demand[precip_band]
+
+// 10. Data quality per month (latest reconciliation run of each month)
+EVALUATE
+SUMMARIZECOLUMNS(
+    dim_month[year_month],
+    "Bronze Rows", [Bronze Rows],
+    "Accepted Rows", [Accepted Rows],
+    "Quarantined Rows", [Quarantined Rows],
+    "Quarantine Rate", [Quarantine Rate],
+    "Duplicates Removed", [Duplicates Removed]
+)
+ORDER BY dim_month[year_month]
+
+// 11. Data quality overall and status
+EVALUATE
+ROW(
+    "Bronze Rows", [Bronze Rows],
+    "Accepted Rows", [Accepted Rows],
+    "Quarantined Rows", [Quarantined Rows],
+    "Quarantine Rate", [Quarantine Rate],
+    "Months Reconciled", [Months Reconciled],
+    "Reconciliation Status", [Reconciliation Status],
+    "Last Reconciliation Check", [Last Reconciliation Check]
+)
+
+// 12. Quarantine rows hit by rule (overlapping: a row can hit several rules)
+EVALUATE
+SUMMARIZECOLUMNS(
+    dq_quarantine_by_rule[reason_code],
+    "Rule Rows Hit", [Rule Rows Hit],
+    "Rule Hit Rate", [Rule Hit Rate]
+)
+ORDER BY dq_quarantine_by_rule[reason_code]
+
+// 13. Quarantine rule rows by month (24 rows)
+EVALUATE
+SUMMARIZECOLUMNS(
+    dim_month[year_month],
+    dq_quarantine_by_rule[reason_code],
+    "Rule Rows Hit", [Rule Rows Hit]
+)
+ORDER BY dim_month[year_month], dq_quarantine_by_rule[reason_code]
+
+// 14. Gold aggregates reconcile with the fact (both differences expected 0)
+EVALUATE
+ROW(
+    "Agg vs Fact Revenue Difference", [Agg vs Fact Revenue Difference],
+    "Agg vs Fact Trips Difference", [Agg vs Fact Trips Difference]
+)
+
+// 15. Month-over-month guard: January has no prior month (BLANK) and the multi-month total shows BLANK
+EVALUATE
+ROW(
+    "MoM total (all months, expected blank)", [Revenue MoM %],
+    "Prior month total (all months, expected blank)", [Revenue Prior Month]
+)

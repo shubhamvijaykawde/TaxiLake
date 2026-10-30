@@ -38,5 +38,8 @@ Thumbs.db
 *.log
 *.tmp
 
+# Local Power BI report files: the saved data model keeps the real connection values, so never publish them
+powerbi/*.pbix
+
 # Databricks bundle local state
 .databricks/

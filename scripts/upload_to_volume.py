@@ -37,6 +37,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--month", required=True, help="YYYY-MM")
     parser.add_argument("--profile", default=os.environ.get("DATABRICKS_CONFIG_PROFILE"))
+    parser.add_argument(
+        "--env",
+        choices=["dev", "prod"],
+        default="dev",
+        help="landing volume to upload to: the dev volume (default) or the production volume",
+    )
     parser.add_argument("--force", action="store_true", help="upload even if an identical file is already there")
     args = parser.parse_args()
 
@@ -44,19 +50,19 @@ def main() -> None:
     _, weather = weather_filenames(args.month)
     copy(
         LANDING_DIR / "yellow" / args.month / yellow,
-        volume_path("yellow", yellow, args.month),
+        volume_path("yellow", yellow, args.month, environment=args.env),
         args.profile,
         args.force,
     )
     copy(
         LANDING_DIR / "zones" / "taxi_zone_lookup.csv",
-        volume_path("zones", "taxi_zone_lookup.csv"),
+        volume_path("zones", "taxi_zone_lookup.csv", environment=args.env),
         args.profile,
         args.force,
     )
     copy(
         LANDING_DIR / "weather" / args.month / weather,
-        volume_path("weather", weather, args.month),
+        volume_path("weather", weather, args.month, environment=args.env),
         args.profile,
         args.force,
     )

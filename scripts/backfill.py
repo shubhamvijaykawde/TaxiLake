@@ -2,6 +2,7 @@
 
 Runs sequentially on purpose (free-tier quota, easy recovery) and stops at the first failed month.
 Authentication comes from the Databricks CLI profile (--profile or DATABRICKS_CONFIG_PROFILE); no secrets here.
+It works on the dev environment only (the dev_-prefixed schemas and landing volume); it cannot target prod.
 
 Examples:
   python scripts/backfill.py --start 2025-01 --end 2025-06 --dry-run
@@ -28,10 +29,16 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from landing import build_yellow_url, yellow_filename  # noqa: E402
 
 from taxilake.backfill import check_schema, month_range, pending_months  # noqa: E402
+from taxilake.namespace import resolve  # noqa: E402
 
 LANDING_DIR = ROOT / "data" / "landing"
 LOG_FILE = ROOT / "data" / "backfill_log.jsonl"
 PY = sys.executable
+# This driver only ever works on the dev target (`bundle run ... -t dev`), so it only reads and writes dev tables.
+# Production data is never landed or backfilled from the laptop; there is deliberately no option to change this.
+ENVIRONMENT = "dev"
+NS = resolve("workspace", ENVIRONMENT)
+RECON_TABLE = NS.table("ops", "month_reconciliation")
 
 
 def sh(cmd, capture=False, check=True):
@@ -106,7 +113,7 @@ def preflight(months):
 
 
 def reconciled_months(cli):
-    rows = cli.sql("SELECT source_month FROM workspace.ops.month_reconciliation WHERE status = 'PASS' GROUP BY 1")
+    rows = cli.sql(f"SELECT source_month FROM {RECON_TABLE} WHERE status = 'PASS' GROUP BY 1")
     return {r[0] for r in rows}
 
 
@@ -114,11 +121,15 @@ def run_month(cli, month, source_rows, inject):
     started = time.time()
     batch_id = "bf" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + month.replace("-", "")
     sh([PY, "scripts/fetch_weather.py", "--month", month])
-    upload = [PY, "scripts/upload_to_volume.py", "--month", month]
+    upload = [PY, "scripts/upload_to_volume.py", "--month", month, "--env", ENVIRONMENT]
     if cli.profile:
         upload += ["--profile", cli.profile[1]]
     sh(upload)
-    params = f"month={month},batch_id={batch_id}" + (f",inject_failure={inject}" if inject else "")
+    # `environment` is passed explicitly: a dev bundle deployed before the isolation change has no such job parameter,
+    # so the run is rejected instead of silently writing to the production-named tables.
+    params = f"month={month},batch_id={batch_id},environment={ENVIRONMENT}" + (
+        f",inject_failure={inject}" if inject else ""
+    )
     result = cli.databricks("bundle", "run", "taxilake_pipeline", "-t", "dev", "--params", params, check=False)
     output = (result.stdout or "") + (result.stderr or "")
     match = re.search(r"runs/(\d+)", output)
@@ -143,7 +154,7 @@ def run_month(cli, month, source_rows, inject):
     if ok:
         rows = cli.sql(
             "SELECT bronze_rows, status, silver_accepted, quarantined, fact_rows "
-            "FROM workspace.ops.month_reconciliation "
+            f"FROM {RECON_TABLE} "
             f"WHERE source_month = '{month}' AND run_batch_id = '{batch_id}'"
         )
         if not rows:
