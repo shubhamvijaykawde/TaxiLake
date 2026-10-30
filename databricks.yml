@@ -6,7 +6,15 @@
 bundle:
   name: taxilake
 
+# Local Power BI report and its screenshots are not part of any deployment (the .pbix holds real connection values).
+sync:
+  exclude:
+    - powerbi/*.pbix
+    - docs/img/**
+
 variables:
+  data_env:
+    description: Data environment, "dev" or "prod". Selects the schemas (dev uses the dev_-prefixed ones). No default on purpose; every target sets it.
   run_as_service_principal:
     description: Application (client) ID of the CI service principal that deploys and owns the prod bundle. Supplied by CI.
 
@@ -20,6 +28,8 @@ resources:
       parameters:
         - name: catalog
           default: workspace
+        - name: environment
+          default: ${var.data_env}
         - name: month
           default: "2025-01"
         - name: batch_id
@@ -34,6 +44,9 @@ resources:
         - task_key: bronze_load
           notebook_task:
             notebook_path: ./notebooks/bronze_load.py
+            base_parameters:
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"
           max_retries: 2
           min_retry_interval_millis: 30000
           timeout_seconds: 1800
@@ -42,6 +55,9 @@ resources:
             - task_key: bronze_load
           notebook_task:
             notebook_path: ./notebooks/silver_transform.py
+            base_parameters:
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"
           max_retries: 2
           min_retry_interval_millis: 30000
           timeout_seconds: 1800
@@ -50,6 +66,9 @@ resources:
             - task_key: silver_transform
           notebook_task:
             notebook_path: ./notebooks/gold_build.py
+            base_parameters:
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"
           max_retries: 2
           min_retry_interval_millis: 30000
           timeout_seconds: 1800
@@ -58,6 +77,9 @@ resources:
             - task_key: gold_build
           notebook_task:
             notebook_path: ./notebooks/checks.py
+            base_parameters:
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"
           max_retries: 2
           min_retry_interval_millis: 30000
           timeout_seconds: 1800
@@ -67,6 +89,7 @@ targets:
     mode: development
     default: true
     variables:
+      data_env: dev
       run_as_service_principal: not-used-in-dev  # prod must receive the real value from CI; it has no default
     resources:
       jobs:
@@ -75,6 +98,8 @@ targets:
           parameters:
             - name: catalog
               default: workspace
+            - name: environment
+              default: ${var.data_env}
           tasks:
             # No cluster spec: the task runs on serverless compute, the only option on Free Edition.
             - task_key: smoke_test
@@ -86,6 +111,8 @@ targets:
           parameters:
             - name: catalog
               default: workspace
+            - name: environment
+              default: ${var.data_env}
             - name: month
               default: "2025-01"
             - name: batch_id
@@ -100,6 +127,8 @@ targets:
           parameters:
             - name: catalog
               default: workspace
+            - name: environment
+              default: ${var.data_env}
             - name: month
               default: "2025-01"
             - name: batch_id
@@ -114,6 +143,8 @@ targets:
           parameters:
             - name: catalog
               default: workspace
+            - name: environment
+              default: ${var.data_env}
             - name: month
               default: "2025-01"
             - name: batch_id
@@ -125,6 +156,8 @@ targets:
 
   prod:
     mode: production
+    variables:
+      data_env: prod
     # Private location: the deploying service principal's own home folder (not /Workspace/Shared).
     workspace:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

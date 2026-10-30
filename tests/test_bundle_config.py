@@ -67,6 +67,11 @@ def test_every_task_of_the_pipeline_retries_and_is_ordered():
     assert [d["task_key"] for d in tasks["checks"]["depends_on"]] == ["gold_build"]
 
 
+def test_local_power_bi_report_and_screenshots_are_not_synced_or_committed():
+    assert BUNDLE["sync"]["exclude"] == ["powerbi/*.pbix", "docs/img/**"]
+    assert "powerbi/*.pbix" in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+
 def test_no_host_token_email_or_uuid_in_the_bundle_file():
     text = (ROOT / "databricks.yml").read_text(encoding="utf-8")
     for pattern in SENSITIVE:
@@ -80,3 +85,25 @@ def test_no_host_token_or_email_in_workflows(path):
     text = path.read_text(encoding="utf-8")
     for pattern in SENSITIVE[1:4]:
         assert not re.search(pattern, text), (path.name, pattern)
+
+
+def test_each_target_sets_its_own_data_environment_and_the_variable_has_no_default():
+    assert "default" not in BUNDLE["variables"]["data_env"]
+    assert DEV["variables"]["data_env"] == "dev"
+    assert PROD["variables"]["data_env"] == "prod"
+    assert DEV["mode"] == "development" and PROD["mode"] == "production"
+
+
+def test_the_pipeline_job_takes_its_environment_from_the_variable_so_dev_cannot_inherit_prod():
+    params = {p["name"]: p["default"] for p in pipeline()["parameters"]}
+    assert params["environment"] == "${var.data_env}"
+    assert params["catalog"] == "workspace"
+    assert "environment" not in PROD["resources"]["jobs"]["taxilake_pipeline"].get("parameters", [])
+
+
+def test_no_job_hard_codes_an_environment_value():
+    jobs = [BUNDLE["resources"]["jobs"]["taxilake_pipeline"], *DEV["resources"]["jobs"].values()]
+    for job in jobs:
+        values = [p["default"] for p in job.get("parameters", []) if p["name"] == "environment"]
+        assert values in ([], ["${var.data_env}"]), job.get("name")
+    assert "environment" not in str(PROD["resources"]["jobs"]["taxilake_pipeline"].get("parameters", []))

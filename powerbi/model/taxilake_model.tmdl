@@ -1,0 +1,668 @@
+createOrReplace
+
+	expression ServerHostname = "REPLACE-WITH-SERVER-HOSTNAME" meta [IsParameterQuery = true, Type = "Text", IsParameterQueryRequired = true]
+
+	expression HttpPath = "REPLACE-WITH-HTTP-PATH" meta [IsParameterQuery = true, Type = "Text", IsParameterQueryRequired = true]
+
+	expression Catalog = "workspace" meta [IsParameterQuery = true, Type = "Text", IsParameterQueryRequired = true]
+
+	expression Environment = "prod" meta [IsParameterQuery = true, List = {"prod", "dev"}, DefaultValue = "prod", Type = "Text", IsParameterQueryRequired = true]
+
+	expression SchemaPrefix = if Environment = "dev" then "dev_" else ""
+
+	table dim_date
+		dataCategory: Time
+
+		column date_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: date_key
+
+		column date
+			dataType: dateTime
+			formatString: "yyyy-mm-dd"
+			isKey
+			summarizeBy: none
+			sourceColumn: date
+
+		column year
+			dataType: int64
+			summarizeBy: none
+			sourceColumn: year
+
+		column month
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: month
+
+		column month_name
+			dataType: string
+			summarizeBy: none
+			sourceColumn: month_name
+			sortByColumn: month
+
+		column day
+			dataType: int64
+			summarizeBy: none
+			sourceColumn: day
+
+		column day_of_week
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: day_of_week
+
+		column day_name
+			dataType: string
+			summarizeBy: none
+			sourceColumn: day_name
+			sortByColumn: day_of_week
+
+		column is_weekend
+			dataType: boolean
+			summarizeBy: none
+			sourceColumn: is_weekend
+
+		column year_month = FORMAT(dim_date[year], "0000") & "-" & FORMAT(dim_date[month], "00")
+			dataType: string
+			summarizeBy: none
+
+		partition dim_date = m
+			mode: import
+			source =
+				let
+					Source = DatabricksMultiCloud.Catalogs(ServerHostname, HttpPath, [Catalog = null, Database = null, EnableAutomaticProxyDiscovery = null]),
+					Cat = Source{[Name = Catalog, Kind = "Database"]}[Data],
+					Sch = Cat{[Name = SchemaPrefix & "gold", Kind = "Schema"]}[Data],
+					Tbl = Sch{[Name = "dim_date", Kind = "Table"]}[Data]
+				in
+					Tbl
+
+	table dim_time_of_day
+
+		column hour_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: hour_key
+
+		column hour_label
+			dataType: string
+			summarizeBy: none
+			sourceColumn: hour_label
+			sortByColumn: hour_key
+
+		column time_band
+			dataType: string
+			summarizeBy: none
+			sourceColumn: time_band
+
+		partition dim_time_of_day = m
+			mode: import
+			source =
+				let
+					Source = DatabricksMultiCloud.Catalogs(ServerHostname, HttpPath, [Catalog = null, Database = null, EnableAutomaticProxyDiscovery = null]),
+					Cat = Source{[Name = Catalog, Kind = "Database"]}[Data],
+					Sch = Cat{[Name = SchemaPrefix & "gold", Kind = "Schema"]}[Data],
+					Tbl = Sch{[Name = "dim_time_of_day", Kind = "Table"]}[Data]
+				in
+					Tbl
+
+	table dim_zone
+
+		column zone_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: zone_key
+
+		column borough
+			dataType: string
+			summarizeBy: none
+			sourceColumn: borough
+
+		column zone
+			dataType: string
+			summarizeBy: none
+			sourceColumn: zone
+
+		column service_zone
+			dataType: string
+			summarizeBy: none
+			sourceColumn: service_zone
+
+		partition dim_zone = m
+			mode: import
+			source =
+				let
+					Source = DatabricksMultiCloud.Catalogs(ServerHostname, HttpPath, [Catalog = null, Database = null, EnableAutomaticProxyDiscovery = null]),
+					Cat = Source{[Name = Catalog, Kind = "Database"]}[Data],
+					Sch = Cat{[Name = SchemaPrefix & "gold", Kind = "Schema"]}[Data],
+					Tbl = Sch{[Name = "dim_zone", Kind = "Table"]}[Data]
+				in
+					Tbl
+
+	table dim_payment_type
+
+		column payment_type_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: payment_type_key
+
+		column payment_type_name
+			dataType: string
+			summarizeBy: none
+			sourceColumn: payment_type_name
+
+		partition dim_payment_type = m
+			mode: import
+			source =
+				let
+					Source = DatabricksMultiCloud.Catalogs(ServerHostname, HttpPath, [Catalog = null, Database = null, EnableAutomaticProxyDiscovery = null]),
+					Cat = Source{[Name = Catalog, Kind = "Database"]}[Data],
+					Sch = Cat{[Name = SchemaPrefix & "gold", Kind = "Schema"]}[Data],
+					Tbl = Sch{[Name = "dim_payment_type", Kind = "Table"]}[Data]
+				in
+					Tbl
+
+	/// gold.fact_trips summed by pickup date, pickup hour, pickup zone and payment type (read-only query). Not trip-level; the dropoff zone is not available here.
+	table fact_trips_hourly
+
+		column pickup_date_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: pickup_date_key
+
+		column pickup_hour_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: pickup_hour_key
+
+		column pu_zone_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: pu_zone_key
+
+		column payment_type_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: payment_type_key
+
+		column trips
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: trips
+
+		column total_amount_sum
+			dataType: double
+			isHidden
+			summarizeBy: none
+			sourceColumn: total_amount_sum
+
+		column fare_amount_sum
+			dataType: double
+			isHidden
+			summarizeBy: none
+			sourceColumn: fare_amount_sum
+
+		column tip_amount_sum
+			dataType: double
+			isHidden
+			summarizeBy: none
+			sourceColumn: tip_amount_sum
+
+		column trip_distance_sum
+			dataType: double
+			isHidden
+			summarizeBy: none
+			sourceColumn: trip_distance_sum
+
+		partition fact_trips_hourly = m
+			mode: import
+			source =
+				let
+					Source = DatabricksMultiCloud.Catalogs(ServerHostname, HttpPath, [Catalog = null, Database = null, EnableAutomaticProxyDiscovery = null]),
+					Cat = Source{[Name = Catalog, Kind = "Database"]}[Data],
+					Result = Value.NativeQuery(Cat, "SELECT pickup_date_key, pickup_hour_key, pu_zone_key, payment_type_key, count(*) AS trips, sum(total_amount) AS total_amount_sum, sum(fare_amount) AS fare_amount_sum, sum(tip_amount) AS tip_amount_sum, sum(trip_distance) AS trip_distance_sum FROM " & Catalog & "." & SchemaPrefix & "gold.fact_trips GROUP BY pickup_date_key, pickup_hour_key, pu_zone_key, payment_type_key", null, [EnableFolding = false])
+				in
+					Result
+
+	table agg_hourly_demand
+
+		column source_month
+			dataType: string
+			isHidden
+			summarizeBy: none
+			sourceColumn: source_month
+
+		column pickup_date_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: pickup_date_key
+
+		column pickup_hour_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: pickup_hour_key
+
+		column trips
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: trips
+
+		column total_revenue
+			dataType: double
+			isHidden
+			summarizeBy: none
+			sourceColumn: total_revenue
+
+		column avg_trip_distance
+			dataType: double
+			isHidden
+			summarizeBy: none
+			sourceColumn: avg_trip_distance
+
+		column temperature_c
+			dataType: double
+			formatString: "0.0"
+			summarizeBy: none
+			sourceColumn: temperature_c
+
+		column precipitation_mm
+			dataType: double
+			formatString: "0.0"
+			summarizeBy: none
+			sourceColumn: precipitation_mm
+
+		column precip_band = SWITCH(TRUE(), agg_hourly_demand[precipitation_mm] = 0, "1 Dry", agg_hourly_demand[precipitation_mm] < 1, "2 Light (under 1 mm)", agg_hourly_demand[precipitation_mm] < 4, "3 Moderate (1 to 4 mm)", "4 Heavy (4 mm and over)")
+			dataType: string
+			summarizeBy: none
+
+		partition agg_hourly_demand = m
+			mode: import
+			source =
+				let
+					Source = DatabricksMultiCloud.Catalogs(ServerHostname, HttpPath, [Catalog = null, Database = null, EnableAutomaticProxyDiscovery = null]),
+					Cat = Source{[Name = Catalog, Kind = "Database"]}[Data],
+					Sch = Cat{[Name = SchemaPrefix & "gold", Kind = "Schema"]}[Data],
+					Tbl = Sch{[Name = "agg_hourly_demand", Kind = "Table"]}[Data]
+				in
+					Tbl
+
+	/// Existing gold aggregate, kept only to reconcile against the fact.
+	table agg_daily_revenue_by_borough
+
+		column source_month
+			dataType: string
+			isHidden
+			summarizeBy: none
+			sourceColumn: source_month
+
+		column pickup_date_key
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: pickup_date_key
+
+		column pickup_borough
+			dataType: string
+			summarizeBy: none
+			sourceColumn: pickup_borough
+
+		column trips
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: trips
+
+		column total_revenue
+			dataType: double
+			isHidden
+			summarizeBy: none
+			sourceColumn: total_revenue
+
+		column fare_revenue
+			dataType: double
+			isHidden
+			summarizeBy: none
+			sourceColumn: fare_revenue
+
+		column tip_revenue
+			dataType: double
+			isHidden
+			summarizeBy: none
+			sourceColumn: tip_revenue
+
+		column total_distance
+			dataType: double
+			isHidden
+			summarizeBy: none
+			sourceColumn: total_distance
+
+		partition agg_daily_revenue_by_borough = m
+			mode: import
+			source =
+				let
+					Source = DatabricksMultiCloud.Catalogs(ServerHostname, HttpPath, [Catalog = null, Database = null, EnableAutomaticProxyDiscovery = null]),
+					Cat = Source{[Name = Catalog, Kind = "Database"]}[Data],
+					Sch = Cat{[Name = SchemaPrefix & "gold", Kind = "Schema"]}[Data],
+					Tbl = Sch{[Name = "agg_daily_revenue_by_borough", Kind = "Table"]}[Data]
+				in
+					Tbl
+
+	/// ops.month_reconciliation, one row per checks run. is_latest_run = 1 marks the newest run of each month; monthly measures use only those rows.
+	table dq_reconciliation
+
+		column source_month
+			dataType: string
+			summarizeBy: none
+			sourceColumn: source_month
+
+		column run_batch_id
+			dataType: string
+			summarizeBy: none
+			sourceColumn: run_batch_id
+
+		column checked_at
+			dataType: dateTime
+			formatString: "yyyy-mm-dd hh:nn:ss"
+			summarizeBy: none
+			sourceColumn: checked_at
+
+		column bronze_rows
+			dataType: int64
+			formatString: "#,0"
+			summarizeBy: none
+			sourceColumn: bronze_rows
+
+		column distinct_rows
+			dataType: int64
+			formatString: "#,0"
+			summarizeBy: none
+			sourceColumn: distinct_rows
+
+		column duplicates_removed
+			dataType: int64
+			formatString: "#,0"
+			summarizeBy: none
+			sourceColumn: duplicates_removed
+
+		column silver_accepted
+			dataType: int64
+			formatString: "#,0"
+			summarizeBy: none
+			sourceColumn: silver_accepted
+
+		column quarantined
+			dataType: int64
+			formatString: "#,0"
+			summarizeBy: none
+			sourceColumn: quarantined
+
+		column fact_rows
+			dataType: int64
+			formatString: "#,0"
+			summarizeBy: none
+			sourceColumn: fact_rows
+
+		column fact_total_amount
+			dataType: double
+			formatString: "#,0.00"
+			summarizeBy: none
+			sourceColumn: fact_total_amount
+
+		column silver_total_amount
+			dataType: double
+			formatString: "#,0.00"
+			summarizeBy: none
+			sourceColumn: silver_total_amount
+
+		column orphans
+			dataType: int64
+			formatString: "#,0"
+			summarizeBy: none
+			sourceColumn: orphans
+
+		column agg_daily_trips
+			dataType: int64
+			formatString: "#,0"
+			summarizeBy: none
+			sourceColumn: agg_daily_trips
+
+		column agg_hourly_trips
+			dataType: int64
+			formatString: "#,0"
+			summarizeBy: none
+			sourceColumn: agg_hourly_trips
+
+		column status
+			dataType: string
+			summarizeBy: none
+			sourceColumn: status
+
+		column failures
+			dataType: string
+			summarizeBy: none
+			sourceColumn: failures
+
+		column is_latest_run = IF(dq_reconciliation[checked_at] = CALCULATE(MAX(dq_reconciliation[checked_at]), ALLEXCEPT(dq_reconciliation, dq_reconciliation[source_month])), 1, 0)
+			dataType: int64
+			summarizeBy: none
+
+		partition dq_reconciliation = m
+			mode: import
+			source =
+				let
+					Source = DatabricksMultiCloud.Catalogs(ServerHostname, HttpPath, [Catalog = null, Database = null, EnableAutomaticProxyDiscovery = null]),
+					Cat = Source{[Name = Catalog, Kind = "Database"]}[Data],
+					Sch = Cat{[Name = SchemaPrefix & "ops", Kind = "Schema"]}[Data],
+					Tbl = Sch{[Name = "month_reconciliation", Kind = "Table"]}[Data],
+					Kept = Table.SelectColumns(Tbl, {"source_month", "run_batch_id", "checked_at", "bronze_rows", "distinct_rows", "duplicates_removed", "silver_accepted", "quarantined", "fact_rows", "fact_total_amount", "silver_total_amount", "orphans", "agg_daily_trips", "agg_hourly_trips", "status", "failures"}),
+					Utc = Table.TransformColumns(Kept, {{"checked_at", each if _ is datetimezone then DateTimeZone.RemoveZone(DateTimeZone.SwitchZone(_, 0)) else _, type datetime}})
+				in
+					Utc
+
+	/// Quarantined rows per month and reason code (read-only query). A row can carry several codes, so rule counts overlap and do not sum to the quarantined rows.
+	table dq_quarantine_by_rule
+
+		column source_month
+			dataType: string
+			summarizeBy: none
+			sourceColumn: source_month
+
+		column reason_code
+			dataType: string
+			summarizeBy: none
+			sourceColumn: reason_code
+
+		column rows_hit
+			dataType: int64
+			formatString: "#,0"
+			isHidden
+			summarizeBy: none
+			sourceColumn: rows_hit
+
+		partition dq_quarantine_by_rule = m
+			mode: import
+			source =
+				let
+					Source = DatabricksMultiCloud.Catalogs(ServerHostname, HttpPath, [Catalog = null, Database = null, EnableAutomaticProxyDiscovery = null]),
+					Cat = Source{[Name = Catalog, Kind = "Database"]}[Data],
+					Result = Value.NativeQuery(Cat, "SELECT source_month, reason AS reason_code, count(*) AS rows_hit FROM (SELECT source_month, explode(reason_codes) AS reason FROM " & Catalog & "." & SchemaPrefix & "silver.trips_quarantine) GROUP BY source_month, reason", null, [EnableFolding = false])
+				in
+					Result
+
+	/// One row per month, derived from dim_date. Use dim_month[year_month] for every month slicer.
+	table dim_month
+
+		column year_month
+			dataType: string
+			summarizeBy: none
+			sourceColumn: [year_month]
+
+		partition dim_month = calculated
+			mode: import
+			source = DISTINCT(SELECTCOLUMNS(dim_date, "year_month", dim_date[year_month]))
+
+	/// Holds all report measures.
+	table _Measures
+
+		column Value
+			dataType: int64
+			isHidden
+			summarizeBy: none
+			sourceColumn: [Value]
+
+		measure 'Total Revenue' = SUM(fact_trips_hourly[total_amount_sum])
+			formatString: "$#,0.00"
+			displayFolder: 1 Core
+
+		measure Trips = SUM(fact_trips_hourly[trips])
+			formatString: "#,0"
+			displayFolder: 1 Core
+
+		measure 'Fare Revenue' = SUM(fact_trips_hourly[fare_amount_sum])
+			formatString: "$#,0.00"
+			displayFolder: 1 Core
+
+		measure 'Tip Revenue' = SUM(fact_trips_hourly[tip_amount_sum])
+			formatString: "$#,0.00"
+			displayFolder: 1 Core
+
+		measure 'Total Distance (miles)' = SUM(fact_trips_hourly[trip_distance_sum])
+			formatString: "#,0.00"
+			displayFolder: 1 Core
+
+		measure 'Average Fare' = DIVIDE([Fare Revenue], [Trips])
+			formatString: "$#,0.00"
+			displayFolder: 1 Core
+
+		measure 'Revenue per Mile' = DIVIDE([Total Revenue], [Total Distance (miles)])
+			formatString: "$#,0.00"
+			displayFolder: 1 Core
+
+		measure 'Revenue Prior Month' = IF(HASONEVALUE(dim_date[year_month]), CALCULATE([Total Revenue], DATEADD(dim_date[date], -1, MONTH)), BLANK())
+			formatString: "$#,0.00"
+			displayFolder: 2 Month over month
+
+		measure 'Revenue MoM Change' = IF(ISBLANK([Revenue Prior Month]), BLANK(), [Total Revenue] - [Revenue Prior Month])
+			formatString: "$#,0.00;-$#,0.00"
+			displayFolder: 2 Month over month
+
+		measure 'Revenue MoM %' = IF(ISBLANK([Revenue Prior Month]), BLANK(), DIVIDE([Total Revenue] - [Revenue Prior Month], [Revenue Prior Month]))
+			formatString: "0.0%;-0.0%;0.0%"
+			displayFolder: 2 Month over month
+
+		measure 'Avg Trips per Hour' = DIVIDE(SUM(agg_hourly_demand[trips]), COUNTROWS(agg_hourly_demand))
+			formatString: "#,0"
+			displayFolder: 3 Weather
+
+		measure 'Avg Temperature (C)' = AVERAGE(agg_hourly_demand[temperature_c])
+			formatString: "0.0"
+			displayFolder: 3 Weather
+
+		measure 'Hours Observed' = COUNTROWS(agg_hourly_demand)
+			formatString: "#,0"
+			displayFolder: 3 Weather
+
+		measure 'Bronze Rows' = CALCULATE(SUM(dq_reconciliation[bronze_rows]), dq_reconciliation[is_latest_run] = 1)
+			formatString: "#,0"
+			displayFolder: 4 Data quality
+
+		measure 'Accepted Rows' = CALCULATE(SUM(dq_reconciliation[silver_accepted]), dq_reconciliation[is_latest_run] = 1)
+			formatString: "#,0"
+			displayFolder: 4 Data quality
+
+		measure 'Quarantined Rows' = CALCULATE(SUM(dq_reconciliation[quarantined]), dq_reconciliation[is_latest_run] = 1)
+			formatString: "#,0"
+			displayFolder: 4 Data quality
+
+		measure 'Duplicates Removed' = CALCULATE(SUM(dq_reconciliation[duplicates_removed]), dq_reconciliation[is_latest_run] = 1)
+			formatString: "#,0"
+			displayFolder: 4 Data quality
+
+		measure 'Quarantine Rate' = DIVIDE([Quarantined Rows], [Bronze Rows])
+			formatString: "0.00%"
+			displayFolder: 4 Data quality
+
+		measure 'Rule Rows Hit' = SUM(dq_quarantine_by_rule[rows_hit])
+			formatString: "#,0"
+			displayFolder: 4 Data quality
+
+		measure 'Rule Hit Rate' = DIVIDE([Rule Rows Hit], [Bronze Rows])
+			formatString: "0.00%"
+			displayFolder: 4 Data quality
+
+		measure 'Months Reconciled' = CALCULATE(DISTINCTCOUNT(dq_reconciliation[source_month]), dq_reconciliation[is_latest_run] = 1)
+			formatString: "0"
+			displayFolder: 4 Data quality
+
+		measure 'Last Reconciliation Check' = CALCULATE(MAX(dq_reconciliation[checked_at]), dq_reconciliation[is_latest_run] = 1)
+			formatString: "yyyy-mm-dd hh:nn:ss"
+			displayFolder: 4 Data quality
+
+		measure 'Reconciliation Status' = VAR latest = CALCULATETABLE(dq_reconciliation, dq_reconciliation[is_latest_run] = 1) RETURN IF(COUNTROWS(latest) = 0, "No data", IF(COUNTROWS(FILTER(latest, dq_reconciliation[status] <> "PASS")) = 0, "All PASS", "CHECK FAILURES"))
+			displayFolder: 4 Data quality
+
+		measure 'Agg vs Fact Revenue Difference' = [Total Revenue] - SUM(agg_daily_revenue_by_borough[total_revenue])
+			formatString: "#,0.00"
+			displayFolder: 5 Reconciliation
+
+		measure 'Agg vs Fact Trips Difference' = [Trips] - SUM(agg_hourly_demand[trips])
+			formatString: "#,0"
+			displayFolder: 5 Reconciliation
+
+		partition _Measures = calculated
+			mode: import
+			source = {BLANK()}
+
+	relationship fact_to_date
+		fromColumn: fact_trips_hourly.pickup_date_key
+		toColumn: dim_date.date_key
+
+	relationship fact_to_hour
+		fromColumn: fact_trips_hourly.pickup_hour_key
+		toColumn: dim_time_of_day.hour_key
+
+	relationship fact_to_zone
+		fromColumn: fact_trips_hourly.pu_zone_key
+		toColumn: dim_zone.zone_key
+
+	relationship fact_to_payment
+		fromColumn: fact_trips_hourly.payment_type_key
+		toColumn: dim_payment_type.payment_type_key
+
+	relationship hourly_agg_to_date
+		fromColumn: agg_hourly_demand.pickup_date_key
+		toColumn: dim_date.date_key
+
+	relationship hourly_agg_to_hour
+		fromColumn: agg_hourly_demand.pickup_hour_key
+		toColumn: dim_time_of_day.hour_key
+
+	relationship daily_agg_to_date
+		fromColumn: agg_daily_revenue_by_borough.pickup_date_key
+		toColumn: dim_date.date_key
+
+	relationship date_to_month
+		fromColumn: dim_date.year_month
+		toColumn: dim_month.year_month
+
+	relationship recon_to_month
+		fromColumn: dq_reconciliation.source_month
+		toColumn: dim_month.year_month
+
+	relationship quarantine_to_month
+		fromColumn: dq_quarantine_by_rule.source_month
+		toColumn: dim_month.year_month

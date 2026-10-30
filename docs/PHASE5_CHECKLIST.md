@@ -4,7 +4,7 @@ Scope: bundle `dev` and `prod` targets, PR checks, and a deployment workflow. **
 
 ## Status: implemented and verified locally; the done-check is NOT yet demonstrated
 
-Nothing has run on GitHub yet (no repository, no commits, no secrets). The cloud done-check can only be shown after you complete the steps in `docs/CICD.md` and merge a PR.
+As of 2026-10-25 nothing had run on GitHub. Since then the repository has commits including the CI workflows, and a deployed production job exists (observed read-only 2026-10-28: `taxilake_pipeline`, deployment kind BUNDLE, created by and running as a UUID-shaped identity consistent with the service principal, PAUSED, 0 runs, old definition). This repository holds no record of the GitHub workflow results and I have not seen them, so **the cloud done-check is not independently demonstrated**; `docs/RUNLOG.md` records only that the author confirmed it. The new job definition (with `environment = prod`) has not been deployed, and `bundle validate -t prod` has not been run with the real service-principal identity.
 
 ## Local verification (run 2026-10-25)
 
@@ -20,7 +20,7 @@ Nothing has run on GitHub yet (no repository, no commits, no secrets). The cloud
 | Safety gate script | Pass | Unit tests cover safe, extra job, missing job, unpaused schedule, scheduled run, missing schedule. Run against the dev summary it correctly fails (five jobs) |
 | Sensitive-string scan | Pass | No host, email, token or UUID in `databricks.yml`, workflows, or the 48 files that would be committed |
 
-Side effect to know about: `bundle validate -t prod` creates an empty folder `.../.bundle/taxilake/prod/files` under the validating identity's home (it contains no files, no state, no job). It was created in my own workspace folder by local validation. No production job exists; the workspace still lists only the five `[dev ...]` jobs.
+Side effect to know about: `bundle validate -t prod` creates an empty folder `.../.bundle/taxilake/prod/files` under the validating identity's home (it contains no files, no state, no job). It was created in my own workspace folder by local validation. At that time no production job existed and the workspace listed only the five `[dev ...]` jobs (a production job was observed later, see Status).
 
 ## Not verified (cannot be verified without GitHub and the service principal)
 
@@ -44,10 +44,10 @@ Side effect to know about: `bundle validate -t prod` creates an empty folder `..
 
 ## Assumptions, limits and decisions
 
-- `prod` shares the existing `workspace.*` schemas with `dev` (user-approved; deviation from PLAN.md's "separate schemas"). A manual run of either target writes the same tables; the pipeline is idempotent.
+- `prod` shares the existing `workspace.*` schemas with `dev` (user-approved; deviation from PLAN.md's "separate schemas"). A manual run of either target writes the same tables; the pipeline is idempotent. **Update (2026-10-28):** a `dev_` schema-prefix isolation was deployed to `dev` and verified for 2025-04 (production-named tables unchanged by two dev runs); the new job definition is not yet deployed to `prod`; see `docs/ISOLATION_CHECKLIST.md`.
 - Auth: service-principal OAuth M2M preferred; OIDC federation is impossible on Free Edition (no account console); PAT is a fallback only.
 - Cloud checks for Phases 1-4 were run by Claude via the CLI at the user's request; Phase 5's done-check depends on GitHub steps only the user can perform.
 
 ## Not started
 
-Phase 6 (Power BI report). Do not start it until you have completed the GitHub steps, confirmed the deployment evidence above, and approved this phase.
+(Historical, written 2026-10-25.) Phase 6 (Power BI report) was started afterwards and is recorded in `docs/PHASE6_CHECKLIST.md`; the deployment evidence listed above has not been recorded in this repository.

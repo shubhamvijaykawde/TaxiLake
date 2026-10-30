@@ -12,7 +12,7 @@ Names only. Never put a secret value in this repository, in an issue, in a PR, o
 
 `deploy` runs only if: variable `DEPLOY_ENABLED` is `true`; `checks` passed on this exact commit; the commit belongs to a merged PR into `main`; the `production` environment is approved; and the commit is still the tip of `main`.
 
-The `prod` target contains only the `taxilake_pipeline` job with its schedule **PAUSED**. It shares the existing `workspace.*` data with `dev` (decision recorded in `docs/RUNLOG.md`). CI/CD never runs jobs, SQL, uploads or backfills, so it cannot change data tables. The schedule must stay paused because landing runs on the laptop; a scheduled cloud run would have no files to load.
+The `prod` target contains only the `taxilake_pipeline` job with its schedule **PAUSED**. `prod` keeps the existing `workspace.*` data; `dev` now maps to `dev_`-prefixed schemas, verified in Databricks for 2025-04 (dev runs left the production-named tables unchanged, `docs/ISOLATION_CHECKLIST.md`). The new `prod` job definition (with `environment = prod`) is not deployed yet: it reaches production only through the normal merge to `main`, and the deployed prod job is still the old definition. The deploy workflow's safety check also fails if the deployed job's `environment` parameter is not `prod`. CI/CD never runs jobs, SQL, uploads or backfills, so it cannot change data tables. The schedule must stay paused because landing runs on the laptop; a scheduled cloud run would have no files to load.
 
 Production deploys to the CI service principal's own home folder: `/Workspace/Users/<service-principal-application-id>/.bundle/taxilake/prod`. Note that `bundle validate -t prod` itself creates an empty `files` folder under that root path.
 

@@ -2,14 +2,20 @@
 
 import calendar
 import re
+import sys
 from datetime import date
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from taxilake.namespace import resolve  # noqa: E402
 
 YELLOW_URL = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{month}.parquet"
 ZONES_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
 WEATHER_URL = "https://archive-api.open-meteo.com/v1/archive"
 NYC_LAT, NYC_LON = 40.7128, -74.0060
 WEATHER_VARS = ("temperature_2m", "precipitation", "wind_speed_10m", "weather_code")
-VOLUME_ROOT = "/Volumes/workspace/landing/raw"
+CATALOG = "workspace"
 
 _MONTH_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
 
@@ -46,11 +52,11 @@ def weather_filenames(month: str) -> tuple[str, str]:
     return f"weather_{month}_raw.json", f"weather_{month}.jsonl"
 
 
-def volume_path(kind: str, filename: str, month: str | None = None) -> str:
-    """Target path in the landing volume for one file."""
+def volume_path(kind: str, filename: str, month: str | None = None, *, environment: str) -> str:
+    """Target path in the environment's landing volume for one file (there is deliberately no default environment)."""
     if kind not in {"yellow", "zones", "weather"}:
         raise ValueError(f"unknown kind {kind!r}")
-    parts = [VOLUME_ROOT, kind]
+    parts = [resolve(CATALOG, environment).volume_root, kind]
     if month is not None:
         parse_month(month)
         parts.append(month)

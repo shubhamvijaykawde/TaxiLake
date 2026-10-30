@@ -40,10 +40,21 @@ def test_filenames():
 
 
 def test_volume_path():
-    assert volume_path("yellow", "f.parquet", "2025-01") == "/Volumes/workspace/landing/raw/yellow/2025-01/f.parquet"
-    assert volume_path("zones", "z.csv") == "/Volumes/workspace/landing/raw/zones/z.csv"
+    prod = "/Volumes/workspace/landing/raw"
+    dev = "/Volumes/workspace/dev_landing/raw"
+    assert volume_path("yellow", "f.parquet", "2025-01", environment="prod") == f"{prod}/yellow/2025-01/f.parquet"
+    assert volume_path("zones", "z.csv", environment="prod") == f"{prod}/zones/z.csv"
+    assert volume_path("yellow", "f.parquet", "2025-01", environment="dev") == f"{dev}/yellow/2025-01/f.parquet"
+    assert volume_path("weather", "w.jsonl", "2025-01", environment="dev") == f"{dev}/weather/2025-01/w.jsonl"
     with pytest.raises(ValueError):
-        volume_path("green", "f.parquet")
+        volume_path("green", "f.parquet", environment="dev")
+
+
+def test_volume_path_requires_a_valid_environment():
+    with pytest.raises(TypeError):
+        volume_path("zones", "z.csv")
+    with pytest.raises(ValueError):
+        volume_path("zones", "z.csv", environment="staging")
 
 
 def _response(n, **overrides):

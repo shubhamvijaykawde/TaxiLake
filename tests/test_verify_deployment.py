@@ -8,8 +8,16 @@ def summary(jobs=("taxilake_pipeline",), status="PAUSED"):
     return {"resources": {"jobs": {name: {"schedule": {"pause_status": status}} for name in jobs}}}
 
 
-def job(status="PAUSED"):
-    return {"settings": {"schedule": {"pause_status": status}}}
+def job(status="PAUSED", environment="prod"):
+    return {
+        "settings": {
+            "schedule": {"pause_status": status},
+            "parameters": [
+                {"name": "catalog", "default": "workspace"},
+                {"name": "environment", "default": environment},
+            ],
+        }
+    }
 
 
 def test_safe_deployment_passes():
@@ -54,3 +62,13 @@ def test_load_json_handles_bom_and_empty_output(tmp_path):
     empty.write_text("", encoding="utf-8")
     assert load_json(str(bom)) == {"a": 1}
     assert load_json(str(empty)) == []
+
+
+@pytest.mark.parametrize("environment", ["dev", "", None, "PROD"])
+def test_deployed_job_must_default_to_the_prod_environment(environment):
+    assert any("environment" in p for p in check(summary(), job(environment=environment), []))
+
+
+def test_deployed_job_without_an_environment_parameter_fails():
+    legacy = {"settings": {"schedule": {"pause_status": "PAUSED"}, "parameters": [{"name": "catalog", "default": "x"}]}}
+    assert any("environment" in p for p in check(summary(), legacy, []))
